@@ -191,6 +191,10 @@ class NpuMLABackend(TorchNativeAttnBackend):
             0, max_bs + 1, dtype=torch.int32, device=model_runner.device
         )
         self.indices_updater_decode = NpuMLAIndicesUpdaterDecode(model_runner, self)
+        max_total_tokens = model_runner.server_args.max_total_tokens
+        if max_total_tokens is None:
+            max_total_tokens = MAX_SEQ_LEN
+        self.max_seqlen_pad = max_total_tokens // model_runner.server_args.page_size
 
     def init_forward_metadata(self, forward_batch: ForwardBatch):
         bs = forward_batch.batch_size
@@ -203,11 +207,8 @@ class NpuMLABackend(TorchNativeAttnBackend):
                     init_metadata_replay=False,
                 )
             else:
-                max_seqlen_pad = (
-                    forward_batch.seq_lens.max().item() + PAGE_SIZE - 1
-                ) // PAGE_SIZE
                 block_kv_indices = torch.full(
-                    (bs, max_seqlen_pad),
+                    (bs, self.max_seqlen_pad),
                     -1,
                     dtype=torch.int32,
                     device=forward_batch.seq_lens.device,
@@ -220,7 +221,7 @@ class NpuMLABackend(TorchNativeAttnBackend):
                     None,
                     block_kv_indices,
                     self.req_to_token.stride(0),
-                    max_seqlen_pad,
+                    self.max_seqlen_pad,
                 )
             self.forward_metadata = NpuMLADecodeMetadata(
                 None,
@@ -494,8 +495,8 @@ class NpuMLABackend(TorchNativeAttnBackend):
             # k_nope, k_rope = k_cache.split(
             #     [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
             # )  # todo, there is a bug
-            k_nope = k_cache[..., : self.kv_lora_rank]
-            k_rope = k_cache[..., self.kv_lora_rank :]
+            k_nope = k_cache[..., : q_nope.size(-1)]
+            k_rope = k_cache[..., q_nope.size(-1) :]
 
             attn_ouput, _ = torch.ops.npu.npu_fused_infer_attention_score(
                 q_nope,
