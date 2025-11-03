@@ -1917,6 +1917,7 @@ class ModelRunner:
             },
         )
         self.graph_runner = graph_runners[self.device](self)
+        self.graph_runner.initialize()
 
         after_mem = get_available_gpu_memory(self.device, self.gpu_id)
         self.graph_mem_usage = before_mem - after_mem
