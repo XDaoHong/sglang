@@ -119,6 +119,7 @@ from sglang.srt.model_executor.piecewise_cuda_graph_runner import (
 from sglang.srt.model_executor.piecewise_npu_graph_runner_decode import (
     PiecewiseNPUGraphRunnerDecode,
 )
+from sglang.srt.model_executor.torch_air_runner import TorchAirRunner
 from sglang.srt.model_loader import get_model
 from sglang.srt.model_loader.loader import DefaultModelLoader, get_model_loader
 from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
@@ -2000,18 +2001,23 @@ class ModelRunner:
         logger.info(
             f"Capture {'cpu graph' if self.device == 'cpu' else 'cuda graph'} begin. This can take up to several minutes. avail mem={before_mem:.2f} GB"
         )
-        graph_runners = defaultdict(
-            lambda: CudaGraphRunner,
-            {
-                "cpu": CPUGraphRunner,
-                "npu": (
-                    PiecewiseNPUGraphRunnerDecode
-                    if self.server_args.enable_piecewise_npu_graph_decode
-                    else NPUGraphRunner
-                ),
-            },
-        )
-        self.graph_runner = graph_runners[self.device](self)
+        if self.server_args.enable_piecewise_npu_graph_decode:
+            self.graph_runner = PiecewiseNPUGraphRunnerDecode(
+                self, self.server_args.compilation_config
+            )
+        else:
+            graph_runners = defaultdict(
+                lambda: CudaGraphRunner,
+                {
+                    "cpu": CPUGraphRunner,
+                    "npu": (
+                        TorchAirRunner
+                        if self.server_args.enable_torch_air_compile
+                        else NPUGraphRunner
+                    ),
+                },
+            )
+            self.graph_runner = graph_runners[self.device](self)
 
         after_mem = get_available_gpu_memory(self.device, self.gpu_id)
         self.graph_mem_usage = before_mem - after_mem
