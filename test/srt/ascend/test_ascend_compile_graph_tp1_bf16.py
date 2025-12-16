@@ -39,9 +39,11 @@ class TestAscendTp1Bf16(CustomTestCase):
             "--attention-backend",
             "ascend",
             "--disable-radix-cache",
-            "--enable-torch-npugraph-ex-compile",
+            "--enable-torch-compile",
             "--watchdog-timeout",
             30000,
+            "--compilation-config",
+            '{"compiler": "npugraph_ex"}',
         ]
 
     def test_a_gsm8k(self):
